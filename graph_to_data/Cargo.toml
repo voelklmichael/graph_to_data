@@ -1,0 +1,8 @@
+[package]
+name = "graph_to_data"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+image = "0.25.1"
+imageproc = "0.25.0"

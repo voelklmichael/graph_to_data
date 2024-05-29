@@ -1,0 +1,4 @@
+[workspace]
+members = ["graph_to_data"]
+
+resolver = "2"
