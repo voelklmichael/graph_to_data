@@ -82,11 +82,10 @@ impl LineDetection for image::ImageBuffer<image::Rgba<u8>, Vec<u8>> {
         let target_component = {
             let tx = first_point.x;
             let ty = first_point.y;
-            let target_component = hit_components[tx as usize]
+            let target_component = *hit_components[tx as usize]
                 .iter()
                 .find(|(min, max)| min <= &ty && max >= &ty)
-                .unwrap()
-                .clone();
+                .unwrap();
             let start = (tx, (target_component.0 + target_component.1) / 2);
             // enlarge to the right
             let right = {

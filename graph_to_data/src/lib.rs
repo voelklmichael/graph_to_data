@@ -190,31 +190,31 @@ fn test_line_dection() {
         (diameter * 0.01) as _,
     );
     dilated.save("dilated.png").unwrap();
-}
-
-fn complete(
-    current: &mut Option<(usize, usize, Vec<u32>)>,
-    long_components: &mut Vec<Vec<(usize, u32)>>,
-    width: u32,
-) {
-    if let Some((current_start, current_end, ys)) = current.take() {
-        if current_end - current_start > ((width as f32) * 0.01) as usize {
-            long_components.push(
-                ys.into_iter()
-                    .enumerate()
-                    .map(|(i, y)| (i + current_start, y))
-                    .collect(),
-            );
+    /*
+        fn complete(
+            current: &mut Option<(usize, usize, Vec<u32>)>,
+            long_components: &mut Vec<Vec<(usize, u32)>>,
+            width: u32,
+        ) {
+            if let Some((current_start, current_end, ys)) = current.take() {
+                if current_end - current_start > ((width as f32) * 0.01) as usize {
+                    long_components.push(
+                        ys.into_iter()
+                            .enumerate()
+                            .map(|(i, y)| (i + current_start, y))
+                            .collect(),
+                    );
+                }
+            }
         }
-    }
-}
-
-fn finish_component(component: &mut Vec<u32>, components: &mut Vec<(u32, u32)>) {
-    if !component.is_empty() {
-        let component = std::mem::take(component);
-        components.push((
-            component.iter().cloned().min().unwrap(),
-            component.into_iter().max().unwrap(),
-        ));
+    */
+    fn finish_component(component: &mut Vec<u32>, components: &mut Vec<(u32, u32)>) {
+        if !component.is_empty() {
+            let component = std::mem::take(component);
+            components.push((
+                component.iter().cloned().min().unwrap(),
+                component.into_iter().max().unwrap(),
+            ));
+        }
     }
 }

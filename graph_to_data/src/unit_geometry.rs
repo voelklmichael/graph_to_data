@@ -5,7 +5,7 @@ pub struct UnitInterval(pub f32);
 
 impl UnitInterval {
     pub fn new(x: f32) -> Result<Self, f32> {
-        if x >= 0. && x <= 1. {
+        if (0. ..=1.).contains(&x) {
             Ok(Self(x))
         } else {
             Err(x)
@@ -20,6 +20,7 @@ impl UnitInterval {
     }
 }
 impl Eq for UnitInterval {}
+#[allow(clippy::derive_ord_xor_partial_ord)]
 impl Ord for UnitInterval {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match self.partial_cmp(other) {

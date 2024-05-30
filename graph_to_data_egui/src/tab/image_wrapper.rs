@@ -56,7 +56,7 @@ impl ImageWrapper {
                     .with_clip_rect(response.rect)
                     .add(egui::Shape::circle_filled(pos, 15., color_egui));
                 if response.clicked() {
-                    clicked = Some(ImagePixel { x, y, color: color })
+                    clicked = Some(ImagePixel { x, y, color })
                 }
             }
         }
@@ -172,19 +172,11 @@ fn position_converter_relative(pos: egui::Pos2, rect: egui::Rect) -> Option<Unit
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, Default)]
 #[serde(default)]
 pub struct CropSettings {
     steps_x: Option<u32>,
     steps_y: Option<u32>,
-}
-impl Default for CropSettings {
-    fn default() -> Self {
-        Self {
-            steps_x: None,
-            steps_y: None,
-        }
-    }
 }
 
 #[must_use]
