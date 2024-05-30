@@ -40,6 +40,62 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'graph_to_data_egui'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=graph_to_data_egui"
+                ],
+                "filter": {
+                    "name": "graph_to_data_egui",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'graph_to_data_egui'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=graph_to_data_egui",
+                    "--package=graph_to_data_egui"
+                ],
+                "filter": {
+                    "name": "graph_to_data_egui",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'graph_to_data_egui'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=graph_to_data_egui",
+                    "--package=graph_to_data_egui"
+                ],
+                "filter": {
+                    "name": "graph_to_data_egui",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
