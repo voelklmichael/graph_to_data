@@ -23,6 +23,7 @@ impl Default for LineDetectionSettings {
         }
     }
 }
+
 pub trait LineDetection {
     fn detect_line(
         &self,
