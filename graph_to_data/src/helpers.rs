@@ -1,5 +1,4 @@
-const HIT: image::Luma<u8> = image::Luma([255]);
-
+pub(super) const HIT: image::Luma<u8> = image::Luma([255]);
 #[derive(Debug, Clone, Copy)]
 pub struct Vertical {
     pub min: u32,
@@ -24,38 +23,6 @@ impl Vertical {
         self.min = self.min.min(other.min);
         self.max = self.max.max(other.max);
     }
-}
-pub fn vertical_components(
-    image: &image::ImageBuffer<image::Luma<u8>, Vec<u8>>,
-) -> Vec<Vec<Vertical>> {
-    let vertical_components = (0..image.width())
-        .map(|x| {
-            let mut components = Vec::new();
-            let mut current_component = Vec::new();
-            #[inline(always)]
-            fn complete_component(
-                current_component: &mut Vec<u32>,
-                components: &mut Vec<Vertical>,
-            ) {
-                let current_component = std::mem::take(current_component);
-                if !current_component.is_empty() {
-                    let min = *current_component.first().unwrap();
-                    let max = *current_component.last().unwrap();
-                    components.push(Vertical { min, max });
-                }
-            }
-            for y in 0..image.height() {
-                if image.get_pixel(x, y) == &HIT {
-                    current_component.push(y);
-                } else {
-                    complete_component(&mut current_component, &mut components)
-                }
-            }
-            complete_component(&mut current_component, &mut components);
-            components
-        })
-        .collect::<Vec<_>>();
-    vertical_components
 }
 
 pub struct StitchedComponentInternal {

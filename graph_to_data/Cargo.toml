@@ -7,3 +7,4 @@ edition = "2021"
 image = "0.25.1"
 imageproc = "0.25.0"
 serde = { version = "1", features = ["derive"] }
+itertools = "0.13.0"

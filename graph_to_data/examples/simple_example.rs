@@ -1,133 +1,178 @@
 const H: u8 = 255;
-
-struct Settings {
-    step1_color_radius: u8,
-    stitch_x_diff_max: usize,
-    //step2_dilation_steps: u8,
-    //step3_jump_step_size: u32,
-    //step3_connected_component_min_length_fraction: UnitInterval,
-}
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            step1_color_radius: 180,
-            stitch_x_diff_max: 8, //step2_dilation_steps: 0,
-                                  //step3_jump_step_size: 3,
-                                  //step3_connected_component_min_length_fraction: UnitInterval::new(0.05).unwrap(),
-        }
-    }
-}
+const M: u8 = 128;
+const N: u8 = 0;
 
 fn main() {
-    let settings = Settings::default();
     let image_bytes = include_bytes!(
-        "../example_data/Mplwp_dispersion_curves.svg.png" //"../example_data/Polynomial_of_degree_three.svg.png"
-                                                          //"../example_data/X^4_4^x.PNG"
-                                                          //"../example_data/FFT_of_Cosine_Summation_Function.svg.png"
+        //"../example_data/Mplwp_dispersion_curves.svg.png"
+        //"../example_data/Polynomial_of_degree_three.svg.png"
+        //"../example_data/X^4_4^x.PNG"
+        //"../example_data/FFT_of_Cosine_Summation_Function.svg.png"
+        "../example_data/Tuberculosis_incidence_US_1953-2009.png"
     );
     let image = image::io::Reader::new(std::io::Cursor::new(image_bytes))
         .with_guessed_format()
         .unwrap()
         .decode()
-        .unwrap();
+        .unwrap()
+        .to_rgb8();
 
-    /*let l = 0.1;
-    let r = 0.956;
-    let t = 0.06;
-    let b = 0.875;
-    let cropped = image.interpolate_image(
-        UnitPoint::unchecked(l, t),
-        UnitPoint::unchecked(l, b),
-        UnitPoint::unchecked(r, t),
-        UnitPoint::unchecked(r, b),
-        150,
-        200,
-    );
-    cropped.save("cropped.png").unwrap();*/
+    if image.width() < 100 && image.height() < 100 {
+        panic!("Image is too small")
+    }
+    let settings = graph_to_data::Settings::default();
+    // step 1 - extract colors
+    let colors = graph_to_data::extract_colors(&image, &settings);
+    for (index, color) in colors.iter().enumerate() {
+        // step 2 - filter colors
+        let color_filtered = graph_to_data::color_filtering(&image, color, &settings);
+        color_filtered
+            .save(format!("step2_{index}_color_filtered.png"))
+            .unwrap();
+        // step 3 - group into large components and remaining
+        let (large_components, mut remaining_verticals) = {
+            let (large_components, remaining_verticals) =
+                graph_to_data::group_large_components_and_remaining(&color_filtered, &settings);
 
-    //let target_position = [426, 300];
-    let target_color = image::Rgba([0u8, 0, 200, H]);
-    //let target_color = image::Rgba([200u8, 0, 0, H]);
-    //let target_color = dbg!(image.get_pixel(target_position[0], target_position[1]));
+            let mut grouped_image = imageproc::map::map_colors(&color_filtered, |c| {
+                if c == image::Luma([H; 1]) {
+                    image::Rgba([N, N, M, H])
+                } else {
+                    image::Rgba([N, N, N, H])
+                }
+            });
+            for (color_index, component) in large_components.iter().enumerate() {
+                dbg!(component.x_used_count());
+                let color = match color_index % 7 {
+                    0 => image::Rgba([H, H, H, H]),
+                    1 => image::Rgba([H, H, N, H]),
+                    2 => image::Rgba([N, H, H, H]),
+                    3 => image::Rgba([H, N, H, H]),
+                    4 => image::Rgba([H, N, N, H]),
+                    5 => image::Rgba([N, H, N, H]),
+                    6 => image::Rgba([N, N, H, H]),
+                    _ => unreachable!(),
+                };
+                for (x, y) in component.ys.iter().enumerate() {
+                    if let Some(y) = y.mean() {
+                        *grouped_image.get_pixel_mut(x as _, y) = color;
+                    }
+                }
+            }
+            dbg!("Remaining verticals: ", remaining_verticals.len());
+            for vertical in &remaining_verticals {
+                let graph_to_data::CombinedVerticals { x_start, combined } = vertical;
+                for (x_offset, ys) in combined.iter().enumerate() {
+                    let x = x_start.0 + x_offset as u32;
+                    let y = ys.mean();
+                    let color = image::Rgba([M, M, M, H]);
+                    *grouped_image.get_pixel_mut(x as _, y) = color;
+                }
+            }
 
-    const HIT: image::Luma<u8> = image::Luma([H]);
-    const MISSED: image::Luma<u8> = image::Luma([0]);
-    let color_filtered = imageproc::map::map_pixels(&image, |_, _, p| {
-        let p = p.0;
-        let diff = p
-            .into_iter()
-            .zip(target_color.0)
-            .map(|(p, t)| p.max(t) - p.min(t))
-            .take(3)
-            .fold(0u8, |p, c| p.saturating_add(c));
-        if diff < settings.step1_color_radius {
-            HIT
-        } else {
-            MISSED
+            grouped_image
+                .save(format!("step3_{index}_large_components.png"))
+                .unwrap();
+            (large_components, remaining_verticals)
+        };
+        // step 4 - combine components/remaining
+        {
+            let graphs = graph_to_data::stitch(
+                large_components,
+                &mut remaining_verticals,
+                &settings,
+                &color_filtered,
+            );
+
+            let mut stitched_image = imageproc::map::map_colors(&color_filtered, |c| {
+                if c == image::Luma([H; 1]) {
+                    image::Rgba([N, N, M, H])
+                } else {
+                    image::Rgba([N, N, N, H])
+                }
+            });
+            for (color_index, graph) in graphs.iter().enumerate() {
+                dbg!(graph.x_used_count());
+                let color = match color_index % 7 {
+                    0 => image::Rgba([H, H, H, H]),
+                    1 => image::Rgba([H, H, N, H]),
+                    2 => image::Rgba([N, H, H, H]),
+                    3 => image::Rgba([H, N, H, H]),
+                    4 => image::Rgba([H, N, N, H]),
+                    5 => image::Rgba([N, H, N, H]),
+                    6 => image::Rgba([N, N, H, H]),
+                    _ => unreachable!(),
+                };
+                for (x, y) in graph.ys.iter().enumerate() {
+                    if let Some(y) = y.mean() {
+                        *stitched_image.get_pixel_mut(x as _, y) = color;
+                    }
+                }
+            }
+            dbg!("Remaining verticals: ", remaining_verticals.len());
+
+            stitched_image
+                .save(format!("step4_{index}_stitched.png"))
+                .unwrap();
         }
-    });
-    color_filtered.save("step1_color_filtered.png").unwrap();
+    }
+    return;
 
     /*
-    let dilated = imageproc::morphology::dilate(
-        &color_filtered,
-        imageproc::distance_transform::Norm::LInf,
-        settings.step2_dilation_steps,
-    );
-    dilated.save("step2_dilated.png").unwrap();
+
     */
 
-    // find vertical components
-    let vertical_components = graph_to_data::helpers::vertical_components(&color_filtered);
-    let curve_count = match vertical_components.iter().map(|x| x.len()).max() {
+    /*let curve_count = match vertical_components.max_component_count() {
         Some(curve_count) => curve_count,
         None => panic!("No curves found - your color does not appear in plot"),
     };
     dbg!(curve_count);
 
     let connected_components_parts =
-        graph_to_data::helpers::connect_vertical_components(vertical_components);
+        vertical_components.group_into_connected_components(Default::default());
+    dbg!(connected_components_parts);*/
+    /*
+        let mut connected_components = graph_to_data::helpers::stitch_components(
+            connected_components_parts,
+            settings.stitch_x_diff_max,
+        );
+        connected_components.sort_by_key(|x| x.points.len());
+        connected_components.reverse();
 
-    let mut connected_components = graph_to_data::helpers::stitch_components(
-        connected_components_parts,
-        settings.stitch_x_diff_max,
-    );
-    connected_components.sort_by_key(|x| x.points.len());
-    connected_components.reverse();
+        let mut connected_components_image = imageproc::map::map_colors(
+            &color_filtered,
+            //&dilated,
+            |c| {
+                if c == HIT {
+                    image::Rgba([0u8, 0, 128, H])
+                } else {
+                    image::Rgba([0u8, 0, 0, H])
+                }
+            },
+        );
+        for (color_index, component) in connected_components.iter().enumerate() {
+            let component = &component.points;
+            dbg!(component.len());
+            let color = match color_index {
+                0 => image::Rgba([H, H, H, H]),
+                1 => image::Rgba([H, H, 0, H]),
+                2 => image::Rgba([0, H, H, H]),
+                3 => image::Rgba([H, 0, H, H]),
+                4 => image::Rgba([H, 0, 0, H]),
+                5 => image::Rgba([0, H, 0, H]),
+                6 => image::Rgba([0, 0, H, H]),
+                _ => image::Rgba([H / 2, H / 2, 0, H]),
+            };
 
-    let mut connected_components_image = imageproc::map::map_colors(
-        &color_filtered,
-        //&dilated,
-        |c| {
-            if c == HIT {
-                image::Rgba([0u8, 0, 128, H])
-            } else {
-                image::Rgba([0u8, 0, 0, H])
+            for (x, y) in component {
+                *connected_components_image.get_pixel_mut(*x as _, *y) = color;
             }
-        },
-    );
-    for (color_index, component) in connected_components.iter().enumerate() {
-        let component = &component.points;
-        dbg!(component.len());
-        let color = match color_index {
-            0 => image::Rgba([H, H, H, H]),
-            1 => image::Rgba([H, H, 0, H]),
-            2 => image::Rgba([0, H, H, H]),
-            3 => image::Rgba([H, 0, H, H]),
-            4 => image::Rgba([H, 0, 0, H]),
-            5 => image::Rgba([0, H, 0, H]),
-            6 => image::Rgba([0, 0, H, H]),
-            _ => image::Rgba([H / 2, H / 2, 0, H]),
-        };
-
-        for (x, y) in component {
-            *connected_components_image.get_pixel_mut(*x as _, *y) = color;
         }
-    }
 
-    connected_components_image
-        .save("step4_stitched_components.png")
-        .unwrap();
+        connected_components_image
+            .save("step4_stitched_components.png")
+            .unwrap();
+    */
 
     // part 4 - stitch parts together
 
@@ -364,6 +409,7 @@ fn main() {
 
     */
 }
+
 /*
 fn finish_component(component: &mut Vec<u32>, components: &mut Vec<(u32, u32)>) {
     if !component.is_empty() {
