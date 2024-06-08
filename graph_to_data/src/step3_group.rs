@@ -67,10 +67,6 @@ impl VerticalComponent {
             0
         }
     }
-
-    fn mean(self) -> u32 {
-        (self.y_max + self.y_min) / 2
-    }
 }
 
 struct VerticalComponentList {
@@ -333,137 +329,13 @@ pub fn group_large_components_and_remaining(
     let verticals = verticals.combining_horizontally();
     (components, verticals)
 }
-pub fn aeie() {
-    // combine closeby components
-    {}
-    todo!();
-    /*
-
-    let mut verticals = verticals
-        .components
-        .into_iter()
-        .enumerate()
-        .flat_map(|(x, vs)| vs.components.into_iter().map(move |c| (X(x as _), c)))
-        .collect_vec();
-
-    // add unused verticals close to plots, using each x-position once
-    // also, combine components
-    loop {
-        components.sort_by_key(|c: &GraphMultiNode| c.len());
-        components.reverse();
-        // try to combine components
-        if let Some((i, Some((j, d)))) = components
-            .iter()
-            .enumerate()
-            .map(|(comp_index, comp)| {
-                (
-                    comp_index,
-                    components
-                        .iter()
-                        .enumerate()
-                        .skip(comp_index + 1)
-                        .map(|(j, y)| (j, comp.distance(y)))
-                        .min_by_key(|(_, d)| *d),
-                )
-            })
-            .min_by_key(|(_, j)| j.map(|(_, d)| d).unwrap_or(u32::MAX))
-        {
-            if d < image.height() * 4 / 100 {
-                let other = components.remove(j);
-                components[i].stitch_together(other);
-                continue;
-            }
-        }
-        if let Some((vertical_index, comp_index, _)) = verticals
-            .iter()
-            .map(|(x, v)| compute_distance_to_components(x, v, &components))
-            .enumerate()
-            .filter_map(|(vertical_index, (comp_index, d))| match d {
-                Distance::CanBeExtendend { distance } => {
-                    Some((vertical_index, comp_index, distance))
-                }
-                Distance::CannotBeExtended => None,
-            })
-            .min_by_key(|(_, _, d)| *d)
-        {
-            let (x, vertical) = verticals.remove(vertical_index);
-            components[comp_index].ys[x.0 as usize]
-                .verticals
-                .push(vertical);
-            continue;
-        }
-        break;
-    }
-
-    dbg!(verticals.len());
-    components.sort_by_key(|c| c.len());
-    components.reverse();
-
-    components.into_iter().map(|x| x.convert()).collect_vec()
-    */
-}
 
 #[derive(PartialEq, PartialOrd)]
 pub(crate) enum Distance {
     CanBeExtendend { distance: u32 },
     CannotBeExtended, // no new x coordinate
 }
-fn compute_distance_to_components(
-    x: &X,
-    v: &VerticalComponent,
-    components: &[GraphMultiNode],
-) -> (usize, Distance) {
-    let mut min: (usize, Distance) = (0, Distance::CannotBeExtended);
-    for (comp_index, component) in components.iter().enumerate() {
-        let d = compute_distance_to_single_component(x, v, component);
-        if d < min.1 {
-            min = (comp_index, d);
-        }
-    }
-    min
-}
-fn compute_distance_to_single_component(
-    x: &X,
-    v: &VerticalComponent,
-    component: &GraphMultiNode,
-) -> Distance {
-    let ys = &component.ys;
-    let x = x.0;
-    if !ys[x as usize].verticals.is_empty() {
-        Distance::CannotBeExtended
-    } else {
-        let mut d = u32::MAX;
-        for r in 1.. {
-            if r >= d {
-                break;
-            }
-            let xx = match (x.checked_add(r), x.checked_sub(r)) {
-                (None, None) => vec![],
-                (None, Some(left)) => vec![left],
-                (Some(right), None) => vec![right],
-                (Some(right), Some(left)) => vec![left, right],
-            };
-            if let Some(dis) = xx
-                .into_iter()
-                .flat_map(|x| {
-                    ys.get(x as usize)
-                        .into_iter()
-                        .flat_map(|x| x.verticals.iter())
-                })
-                .map(|vv| v.distance_to(vv))
-                .min()
-            {
-                let dis = dis + r;
-                if dis < d {
-                    d = dis;
-                }
-            }
-        }
 
-        let d = Distance::CanBeExtendend { distance: d };
-        d
-    }
-}
 #[derive(Default, Clone)]
 pub struct MultiNode {
     verticals: Vec<VerticalComponent>,
@@ -471,15 +343,6 @@ pub struct MultiNode {
 impl MultiNode {
     fn new(v: VerticalComponent) -> Self {
         Self { verticals: vec![v] }
-    }
-
-    fn convert(self) -> Option<u32> {
-        let n = self.verticals.len();
-        if n > 0 {
-            Some(self.verticals.into_iter().map(|x| x.mean()).sum::<u32>() / n as u32)
-        } else {
-            None
-        }
     }
 
     fn distance(&self, r: &MultiNode) -> u32 {
@@ -513,14 +376,6 @@ impl GraphMultiNode {
         let mut ys = Vec::with_capacity(width as usize);
         ys.extend(vec![MultiNode::default(); start.0 as usize]);
         Self { ys }
-    }
-
-    pub fn len(&self) -> usize {
-        self.ys.iter().filter(|x| !x.verticals.is_empty()).count()
-    }
-
-    pub fn convert(self) -> Vec<Option<u32>> {
-        self.ys.into_iter().map(|m| m.convert()).collect_vec()
     }
 
     pub(crate) fn distance(&self, other: &GraphMultiNode) -> u32 {
@@ -568,10 +423,6 @@ impl GraphMultiNode {
             .unwrap_or(usize::MAX)
     }
 
-    pub fn x_used_count(&self) -> usize {
-        self.ys.iter().filter(|y| !y.verticals.is_empty()).count()
-    }
-
     pub(crate) fn distance_to_vertical(&self, v: &CombinedVerticals) -> Distance {
         if self
             .ys
@@ -616,5 +467,49 @@ impl GraphMultiNode {
             let x = x_offset + x_start.0 as usize;
             self.ys[x].verticals.push(v.convert())
         }
+    }
+
+    pub fn overlaps(&self, other: &GraphMultiNode) -> bool {
+        self.ys
+            .iter()
+            .zip(&other.ys)
+            .any(|(s, o)| !s.verticals.is_empty() && !o.verticals.is_empty())
+    }
+
+    pub fn aggregate(&mut self, other: GraphMultiNode) {
+        self.ys
+            .iter_mut()
+            .zip(other.ys)
+            .for_each(|(s, o)| s.verticals.extend(o.verticals));
+    }
+
+    pub(crate) fn to_plot(
+        &self,
+        x_limits: (f32, f32),
+        y_limits: (f32, f32),
+        steps_x: u32,
+        steps_y: u32,
+    ) -> Vec<(f32, f32)> {
+        assert_eq!(self.ys.len(), steps_x as usize);
+        self.ys
+            .iter()
+            .enumerate()
+            .flat_map(|(x, ys)| {
+                if let Some(y) = ys.mean() {
+                    fn convert(x: u32, limits: (f32, f32), n: u32) -> f32 {
+                        let delta = limits.1 - limits.0;
+                        assert!(delta.is_finite());
+                        assert!(delta > 0.);
+                        let delta_divided_n = delta / n as f32;
+                        limits.0 + (x as f32 + 0.5) * delta_divided_n
+                    }
+                    let x = convert(x as u32, x_limits, steps_x);
+                    let y = convert(y as u32, y_limits, steps_y);
+                    Some((x, y))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }

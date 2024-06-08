@@ -1,6 +1,6 @@
 use crate::{
-    step3_group::{Distance, GraphMultiNode},
-    CombinedVerticals, Settings,
+    step3_group::{CombinedVerticals, Distance, GraphMultiNode},
+    Settings,
 };
 
 pub fn stitch(

@@ -1,5 +1,8 @@
 [workspace]
-members = ["graph_to_data", "graph_to_data_egui"]
+members = [
+    "graph_to_data",
+    #"graph_to_data_egui"
+]
 
 resolver = "2"
 

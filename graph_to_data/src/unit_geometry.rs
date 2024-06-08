@@ -75,4 +75,16 @@ impl UnitQuadrilateral {
     pub fn height(&self) -> f32 {
         self.rb.y.max(self.lb.y).0 - self.lt.y.min(self.rt.y).0
     }
+    pub fn unit_square() -> Self {
+        Self::rectangular(
+            UnitPoint {
+                x: UnitInterval(0.),
+                y: UnitInterval(0.),
+            },
+            UnitPoint {
+                x: UnitInterval(1.),
+                y: UnitInterval(1.),
+            },
+        )
+    }
 }

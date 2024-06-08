@@ -2,7 +2,7 @@ use super::unit_geometry::{UnitPoint, UnitQuadrilateral};
 
 pub trait ImageInterpolate<Pixel: image::Pixel> {
     fn interpolate_pixel(&self, point: UnitPoint) -> Pixel;
-    fn interpolate_image(
+    fn crop(
         &self,
         quadrilateral: UnitQuadrilateral,
         steps_x: u32,

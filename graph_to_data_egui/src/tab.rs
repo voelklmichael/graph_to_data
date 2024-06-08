@@ -8,7 +8,7 @@ use strum::VariantArray;
 
 pub struct Settings {
     crop: image_wrapper::CropSettings,
-    line_detection: graph_to_data::LineDetectionSettings,
+    //   line_detection: graph_to_data::LineDetectionSettings,
 }
 
 mod file_picker;

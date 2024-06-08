@@ -134,7 +134,7 @@ impl ImageWrapper {
         first_point: ImagePixel,
         settings: &LineDetectionSettings,
     ) -> Vec<(u32, u32)> {
-        use graph_to_data::LineDetection;
+        use graph_to_data::LineDetected;
         self.image.detect_line(first_point, settings)
     }
 
