@@ -1,6 +1,6 @@
 pub fn color_filtering(
-    image: &image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
-    target_color: &image::Rgb<u8>,
+    image: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
+    target_color: &image::Rgba<u8>,
     settings: &crate::Settings,
 ) -> image::ImageBuffer<image::Luma<u8>, Vec<u8>> {
     imageproc::map::map_pixels(image, |_, _, p| {

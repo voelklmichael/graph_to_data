@@ -1,15 +1,15 @@
-use crate::color_distance;
+use crate::{color_distance, color_distance_three};
 
 #[derive(Debug, Default)]
 struct ColorExtractor {
-    colors: Vec<image::Rgb<u8>>,
+    colors: Vec<image::Rgba<u8>>,
     color_occurences: Vec<Vec<u32>>,
 }
 
 pub fn extract_colors(
-    image: &image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
+    image: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
     settings: &crate::Settings,
-) -> Vec<image::Rgb<u8>> {
+) -> Vec<image::Rgba<u8>> {
     let color_extractor = ColorExtractor::classify_image(
         image,
         settings.step1_step2_color_radius,
@@ -23,11 +23,11 @@ pub fn extract_colors(
 }
 impl ColorExtractor {
     fn classify_image(
-        image: &image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
+        image: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
         color_radius: u8,
         ignore_gray: bool,
     ) -> Self {
-        let mut colors: Vec<image::Rgb<u8>> = Vec::new();
+        let mut colors: Vec<image::Rgba<u8>> = Vec::new();
         let mut color_occurences = Vec::new();
         for x in 0..image.width() {
             for y in 0..image.height() {
@@ -35,10 +35,10 @@ impl ColorExtractor {
                 let mut mean = c.0;
                 mean.sort();
                 let mean = mean[1];
-                if color_distance(&image::Rgb([255, 255, 255]), c) < color_radius
-                    || color_distance(&image::Rgb([0, 0, 0]), c) < color_radius
+                if color_distance_three(&image::Rgb([255, 255, 255]), c) < color_radius
+                    || color_distance_three(&image::Rgb([0, 0, 0]), c) < color_radius
                     || (ignore_gray
-                        && color_distance(&image::Rgb([mean, mean, mean]), c) < color_radius)
+                        && color_distance_three(&image::Rgb([mean, mean, mean]), c) < color_radius)
                 {
                     continue;
                 }
@@ -65,10 +65,10 @@ impl ColorExtractor {
 
     fn extract(
         self,
-        image: &image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
+        image: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
         width_minimial_fraction: f32,
         height_maximal_fraction: f32,
-    ) -> Vec<image::Rgb<u8>> {
+    ) -> Vec<image::Rgba<u8>> {
         let Self {
             mut colors,
             color_occurences,

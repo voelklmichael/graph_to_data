@@ -2,5 +2,5 @@
 
 mod app;
 mod dock;
-mod tab;
+mod tab2;
 pub use app::Graph2DataEguiApp;

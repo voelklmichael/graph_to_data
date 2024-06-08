@@ -1,4 +1,4 @@
-use crate::tab::Tab as DockItem;
+use crate::tab2::Tab as DockItem;
 
 #[derive(Default)]
 pub(super) struct DockWidget {}

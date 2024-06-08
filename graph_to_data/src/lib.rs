@@ -13,6 +13,8 @@ use std::path::Path;
 use itertools::Itertools;
 pub use unit_geometry::{UnitInterval, UnitPoint, UnitQuadrilateral};
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub step1_width_minimial_fraction: f32,
     pub step1_height_maximal_fraction: f32,
@@ -21,6 +23,7 @@ pub struct Settings {
     pub step1_step2_color_radius: u8,
     pub step3_min_width_fraction: f32,
     pub step4_component_jump_height_fraction: f32,
+    pub step6_fit_graph_color: Option<[u8; 3]>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -28,15 +31,22 @@ impl Default for Settings {
             step1_step2_color_radius: 5,
             step1_width_minimial_fraction: 0.3,
             step1_height_maximal_fraction: 0.1,
-            step1_close_count: 5,
+            step1_close_count: 0,
             step1_ignore_gray: true,
             step3_min_width_fraction: 0.05,
             step4_component_jump_height_fraction: 0.02,
+            step6_fit_graph_color: Some([218, 165, 32]),
         }
     }
 }
 
-fn color_distance(cc: &image::Rgb<u8>, c: &image::Rgb<u8>) -> u8 {
+fn color_distance(cc: &image::Rgba<u8>, c: &image::Rgba<u8>) -> u8 {
+    cc.0.iter()
+        .zip(c.0)
+        .map(|(&c, cc)| cc.max(c) - cc.min(c))
+        .fold(0, |a, b| a.saturating_add(b))
+}
+fn color_distance_three(cc: &image::Rgb<u8>, c: &image::Rgba<u8>) -> u8 {
     cc.0.iter()
         .zip(c.0)
         .map(|(&c, cc)| cc.max(c) - cc.min(c))
@@ -50,16 +60,16 @@ pub enum Error {
 }
 #[derive(Default)]
 pub struct LineDetected {
-    cropped: Option<image::ImageBuffer<image::Rgb<u8>, Vec<u8>>>,
-    colors: Option<Vec<image::Rgb<u8>>>,
+    cropped: Option<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
+    colors: Option<Vec<image::Rgba<u8>>>,
     color_filtered: Vec<image::ImageBuffer<image::Luma<u8>, Vec<u8>>>,
-    grouped_image: Vec<image::ImageBuffer<image::Rgb<u8>, Vec<u8>>>,
-    stitched_image: Vec<image::ImageBuffer<image::Rgb<u8>, Vec<u8>>>,
-    aggregated_image: Vec<image::ImageBuffer<image::Rgb<u8>, Vec<u8>>>,
+    grouped_image: Vec<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
+    stitched_image: Vec<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
+    aggregated_image: Vec<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
     remaining_vertices: Vec<Vec<step3_group::CombinedVerticals>>,
-    graphs: Vec<(image::Rgb<u8>, Vec<step3_group::GraphMultiNode>)>,
-    image_with_plots: Option<image::ImageBuffer<image::Rgb<u8>, Vec<u8>>>,
-    plots: Vec<(image::Rgb<u8>, Vec<(f32, f32)>)>,
+    graphs: Vec<(image::Rgba<u8>, Vec<step3_group::GraphMultiNode>)>,
+    image_with_plots: Option<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
+    plots: Vec<(image::Rgba<u8>, Vec<(f32, f32)>)>,
 }
 impl LineDetected {
     pub fn save<P: AsRef<std::path::Path>>(&self, output_folder: P) -> image::ImageResult<()> {
@@ -100,9 +110,13 @@ impl LineDetected {
 
         Ok(())
     }
+
+    pub fn final_image_with_plots(&self) -> Option<&image::ImageBuffer<image::Rgba<u8>, Vec<u8>>> {
+        self.image_with_plots.as_ref()
+    }
 }
 pub fn line_detection(
-    image: &image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
+    image: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
     settings: &Settings,
     quadrilateral: UnitQuadrilateral,
     steps_x: u32,
@@ -152,19 +166,19 @@ pub fn line_detection(
             continue;
         }
         {
-            let mut eroded = color_filtered.clone();
+            let mut opened = color_filtered.clone();
             for _ in 0..settings.step1_close_count {
-                eroded = imageproc::morphology::open(
-                    &eroded,
+                opened = imageproc::morphology::open(
+                    &opened,
                     imageproc::distance_transform::Norm::LInf,
                     1,
                 );
-                eroded
+                opened
                     .iter_mut()
                     .zip(color_filtered.iter())
                     .for_each(|(a, b)| *a = (*a).min(*b));
             }
-            if eroded.iter().all(|&p| p == 0) {
+            if opened.iter().all(|&p| p == 0) {
                 continue;
             }
         }
@@ -179,20 +193,20 @@ pub fn line_detection(
 
             let mut grouped_image = imageproc::map::map_colors(color_filtered, |c| {
                 if c == image::Luma([H; 1]) {
-                    image::Rgb([N, N, M])
+                    image::Rgba([N, N, M, H])
                 } else {
-                    image::Rgb([N, N, N])
+                    image::Rgba([N, N, N, H])
                 }
             });
             for (color_index, component) in large_components.iter().enumerate() {
                 let color = match color_index % 7 {
-                    0 => image::Rgb([H, H, H]),
-                    1 => image::Rgb([H, H, N]),
-                    2 => image::Rgb([N, H, H]),
-                    3 => image::Rgb([H, N, H]),
-                    4 => image::Rgb([H, N, N]),
-                    5 => image::Rgb([N, H, N]),
-                    6 => image::Rgb([N, N, H]),
+                    0 => image::Rgba([H, H, H, H]),
+                    1 => image::Rgba([H, H, N, H]),
+                    2 => image::Rgba([N, H, H, H]),
+                    3 => image::Rgba([H, N, H, H]),
+                    4 => image::Rgba([H, N, N, H]),
+                    5 => image::Rgba([N, H, N, H]),
+                    6 => image::Rgba([N, N, H, H]),
                     _ => unreachable!(),
                 };
                 for (x, y) in component.ys.iter().enumerate() {
@@ -206,7 +220,7 @@ pub fn line_detection(
                 for (x_offset, ys) in combined.iter().enumerate() {
                     let x = x_start.0 + x_offset as u32;
                     let y = ys.mean();
-                    let color = image::Rgb([M, M, M]);
+                    let color = image::Rgba([M, M, M, H]);
                     *grouped_image.get_pixel_mut(x as _, y) = color;
                 }
             }
@@ -225,20 +239,20 @@ pub fn line_detection(
 
             let mut stitched_image = imageproc::map::map_colors(color_filtered, |c| {
                 if c == image::Luma([H; 1]) {
-                    image::Rgb([N, N, M])
+                    image::Rgba([N, N, M, H])
                 } else {
-                    image::Rgb([N, N, N])
+                    image::Rgba([N, N, N, H])
                 }
             });
             for (color_index, graph) in graphs.iter().enumerate() {
                 let color = match color_index % 7 {
-                    0 => image::Rgb([H, H, H]),
-                    1 => image::Rgb([H, H, N]),
-                    2 => image::Rgb([N, H, H]),
-                    3 => image::Rgb([H, N, H]),
-                    4 => image::Rgb([H, N, N]),
-                    5 => image::Rgb([N, H, N]),
-                    6 => image::Rgb([N, N, H]),
+                    0 => image::Rgba([H, H, H, H]),
+                    1 => image::Rgba([H, H, N, H]),
+                    2 => image::Rgba([N, H, H, H]),
+                    3 => image::Rgba([H, N, H, H]),
+                    4 => image::Rgba([H, N, N, H]),
+                    5 => image::Rgba([N, H, N, H]),
+                    6 => image::Rgba([N, N, H, H]),
                     _ => unreachable!(),
                 };
                 for (x, y) in graph.ys.iter().enumerate() {
@@ -275,20 +289,20 @@ pub fn line_detection(
             };
             let mut aggregate_image = imageproc::map::map_colors(color_filtered, |c| {
                 if c == image::Luma([H; 1]) {
-                    image::Rgb([N, N, M])
+                    image::Rgba([N, N, M, H])
                 } else {
-                    image::Rgb([N, N, N])
+                    image::Rgba([N, N, N, H])
                 }
             });
             for (color_index, graph) in aggregate.iter().enumerate() {
                 let color = match color_index % 7 {
-                    0 => image::Rgb([H, H, H]),
-                    1 => image::Rgb([H, H, N]),
-                    2 => image::Rgb([N, H, H]),
-                    3 => image::Rgb([H, N, H]),
-                    4 => image::Rgb([H, N, N]),
-                    5 => image::Rgb([N, H, N]),
-                    6 => image::Rgb([N, N, H]),
+                    0 => image::Rgba([H, H, H, H]),
+                    1 => image::Rgba([H, H, N, H]),
+                    2 => image::Rgba([N, H, H, H]),
+                    3 => image::Rgba([H, N, H, H]),
+                    4 => image::Rgba([H, N, N, H]),
+                    5 => image::Rgba([N, H, N, H]),
+                    6 => image::Rgba([N, N, H, H]),
                     _ => unreachable!(),
                 };
                 for (x, y) in graph.ys.iter().enumerate() {
@@ -309,10 +323,15 @@ pub fn line_detection(
         if !line_detected.graphs.is_empty() {
             let mut image_with_plots = cropped.clone();
             for (color, graphs) in &line_detected.graphs {
+                let color = if let Some([r, g, b]) = settings.step6_fit_graph_color {
+                    image::Rgba([r, g, b, 255])
+                } else {
+                    *color
+                };
                 for graph in graphs {
                     for (x, y) in graph.ys.iter().enumerate() {
                         if let Some(y) = y.mean() {
-                            *image_with_plots.get_pixel_mut(x as _, y) = *color;
+                            *image_with_plots.get_pixel_mut(x as _, y) = color;
                         }
                     }
                 }
