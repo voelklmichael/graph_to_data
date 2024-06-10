@@ -20,6 +20,7 @@ serde = { version = "1", features = ["derive"] }
 rfd = "0.14.1"
 image = "0.25.1"
 strum = { version = "0.26", features = ["derive"] }
+arboard = "3.4.0"
 
 graph_to_data = { path = "../graph_to_data" }
 

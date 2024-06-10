@@ -147,11 +147,37 @@ impl FileState {
     }
 
     pub(crate) fn show_select_image_button(&mut self, ui: &mut egui::Ui) {
-        if ui.button("Select image").clicked() {
-            if let Some(path) = rfd::FileDialog::new().set_title("Select image").pick_file() {
-                self.load_from_path(path);
+        ui.horizontal(|ui| {
+            if ui.button("Select file").clicked() {
+                if let Some(path) = rfd::FileDialog::new().set_title("Select image").pick_file() {
+                    self.load_from_path(path);
+                }
             }
-        }
+            if ui.button("From clipboard").clicked() {
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                    if let Ok(image) = clipboard.get_image() {
+                        let buffer = image::ImageBuffer::from_fn(
+                            image.width as u32,
+                            image.height as u32,
+                            |x, y| {
+                                let i = y as usize * image.width + x as usize;
+                                let [r, g, b, a] =
+                                    image.bytes[4 * i..4 * (i + 1)].try_into().unwrap();
+                                image::Rgba([r, g, b, a])
+                            },
+                        );
+                        let mut bytes: Vec<u8> = Vec::new();
+                        if let Ok(()) = buffer.write_to(
+                            &mut std::io::Cursor::new(&mut bytes),
+                            image::ImageFormat::Png,
+                        ) {
+                            self.file_name = Some("From Clipboard".into());
+                            self.load_from_bytes(bytes);
+                        }
+                    }
+                }
+            }
+        });
     }
 
     pub(crate) fn is_loaded(&mut self) -> Option<Option<super::ImageBuf>> {
@@ -159,6 +185,10 @@ impl FileState {
             FileStateEnum::Loaded(image) => Some(image.take()),
             _ => None,
         }
+    }
+
+    pub(crate) fn file_name(&self) -> Option<&str> {
+        self.file_name.as_deref()
     }
 }
 #[derive(Default, Debug)]

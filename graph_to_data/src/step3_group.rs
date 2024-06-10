@@ -496,15 +496,20 @@ impl GraphMultiNode {
             .enumerate()
             .flat_map(|(x, ys)| {
                 if let Some(y) = ys.mean() {
-                    fn convert(x: u32, limits: (f32, f32), n: u32) -> f32 {
+                    fn convert(x: u32, limits: (f32, f32), n: u32, min_max: bool) -> f32 {
                         let delta = limits.1 - limits.0;
                         assert!(delta.is_finite());
                         assert!(delta > 0.);
-                        let delta_divided_n = delta / n as f32;
-                        limits.0 + (x as f32 + 0.5) * delta_divided_n
+                        let delta_divided_n = delta / (n + 1) as f32;
+                        let t = (x + 1) as f32 * delta_divided_n;
+                        if min_max {
+                            limits.1 - t
+                        } else {
+                            limits.0 + t
+                        }
                     }
-                    let x = convert(x as u32, x_limits, steps_x);
-                    let y = convert(y as u32, y_limits, steps_y);
+                    let x = convert(x as u32, x_limits, steps_x, false);
+                    let y = convert(y as u32, y_limits, steps_y, true);
                     Some((x, y))
                 } else {
                     None

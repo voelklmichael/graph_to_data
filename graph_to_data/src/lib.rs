@@ -1,3 +1,4 @@
+pub const GOLD_AS_RGB: [u8; 3] = [218, 165, 32];
 const HIT: image::Luma<u8> = image::Luma([255]);
 const MISSED: image::Luma<u8> = image::Luma([0]);
 
@@ -13,7 +14,7 @@ use std::path::Path;
 use itertools::Itertools;
 pub use unit_geometry::{UnitInterval, UnitPoint, UnitQuadrilateral};
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(default)]
 pub struct Settings {
     pub step1_width_minimial_fraction: f32,
@@ -35,7 +36,7 @@ impl Default for Settings {
             step1_ignore_gray: true,
             step3_min_width_fraction: 0.05,
             step4_component_jump_height_fraction: 0.02,
-            step6_fit_graph_color: Some([218, 165, 32]),
+            step6_fit_graph_color: Some(GOLD_AS_RGB),
         }
     }
 }
@@ -68,7 +69,7 @@ pub struct LineDetected {
     aggregated_image: Vec<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
     remaining_vertices: Vec<Vec<step3_group::CombinedVerticals>>,
     graphs: Vec<(image::Rgba<u8>, Vec<step3_group::GraphMultiNode>)>,
-    image_with_plots: Option<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
+    cropped_with_plots: Option<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
     plots: Vec<(image::Rgba<u8>, Vec<(f32, f32)>)>,
 }
 impl LineDetected {
@@ -85,7 +86,7 @@ impl LineDetected {
             aggregated_image,
             remaining_vertices: _,
             graphs: _,
-            image_with_plots,
+            cropped_with_plots: image_with_plots,
             plots: _,
         } = self;
         if let Some(cropped) = cropped {
@@ -112,7 +113,50 @@ impl LineDetected {
     }
 
     pub fn final_image_with_plots(&self) -> Option<&image::ImageBuffer<image::Rgba<u8>, Vec<u8>>> {
-        self.image_with_plots.as_ref()
+        self.cropped_with_plots.as_ref()
+    }
+
+    pub fn as_csv(&self) -> String {
+        let mut x_grid = Vec::new();
+        for (_, graph) in &self.plots {
+            x_grid.extend(graph.iter().map(|(x, _)| *x));
+        }
+        x_grid.sort_by(|left, right| {
+            if left < right {
+                std::cmp::Ordering::Less
+            } else if left == right {
+                std::cmp::Ordering::Equal
+            } else {
+                std::cmp::Ordering::Greater
+            }
+        });
+        let mut ys = Vec::with_capacity(self.plots.len());
+        let mut header = vec!["x".to_string()];
+        for (_, graph) in &self.plots {
+            let mut yy = vec![f32::NAN; x_grid.len()];
+            let mut previous_index = 0;
+            for (x, y) in graph {
+                let index = x_grid
+                    .iter()
+                    .skip(previous_index)
+                    .position(|xx| xx == x)
+                    .unwrap();
+                yy[index + previous_index] = *y;
+                previous_index += index;
+            }
+            ys.push(yy);
+            header.push(format!("Graph #{}", header.len()));
+        }
+        let mut lines = vec![header.join(";")];
+        for (i, x) in x_grid.into_iter().enumerate() {
+            let mut line = Vec::with_capacity(self.plots.len() + 1);
+            line.push(x.to_string());
+            for yy in &ys {
+                line.push(yy[i].to_string())
+            }
+            lines.push(line.join(";"));
+        }
+        lines.join("\n")
     }
 }
 pub fn line_detection(
@@ -149,7 +193,7 @@ pub fn line_detection(
         const N: u8 = 0;
 
         // step 2 - filter colors
-        let color_filtered = step2_color_filtering::color_filtering(&image, &color, &settings);
+        let color_filtered = step2_color_filtering::color_filtering(&cropped, &color, &settings);
         let counts = (0..color_filtered.width())
             .map(|x| {
                 (0..color_filtered.height())
@@ -336,7 +380,7 @@ pub fn line_detection(
                     }
                 }
             }
-            line_detected.image_with_plots = Some(image_with_plots);
+            line_detected.cropped_with_plots = Some(image_with_plots);
         }
     }
     line_detected.colors = Some(colors_to_use);

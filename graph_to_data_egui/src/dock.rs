@@ -27,14 +27,20 @@ impl DockWidget {
                 })
         }
         // show dock area
+        let mut dock_viewer = DockTabViewer {
+            new_tab_requested: false,
+        };
         egui_dock::DockArea::new(entries)
-            .show_add_buttons(false)
+            .show_add_buttons(true)
             .style({
                 let mut style = egui_dock::Style::from_egui(ui.ctx().style().as_ref());
                 style.tab_bar.fill_tab_bar = true;
                 style
             })
-            .show_inside(ui, &mut DockTabViewer {});
+            .show_inside(ui, &mut dock_viewer);
+        if dock_viewer.new_tab_requested {
+            dock_state.add_new_item(Default::default());
+        }
     }
 }
 
@@ -84,7 +90,9 @@ impl From<DockItem> for DockEntry {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct DockIndex(usize);
 
-struct DockTabViewer {}
+struct DockTabViewer {
+    new_tab_requested: bool,
+}
 impl egui_dock::TabViewer for DockTabViewer {
     type Tab = DockEntry;
 
@@ -102,5 +110,8 @@ impl egui_dock::TabViewer for DockTabViewer {
             .as_ref()
             .map(|(_, id)| *id)
             .unwrap_or(egui::Id::new(0))
+    }
+    fn on_add(&mut self, _surface: egui_dock::SurfaceIndex, _node: egui_dock::NodeIndex) {
+        self.new_tab_requested = true;
     }
 }

@@ -11,6 +11,11 @@ impl UnitInterval {
             Err(x)
         }
     }
+
+    #[must_use]
+    fn transform(&self, size: u32) -> u32 {
+        (self.0 * size as f32) as u32
+    }
 }
 impl UnitInterval {
     #[inline(always)]
@@ -37,11 +42,30 @@ pub struct UnitPoint {
 }
 impl UnitPoint {
     #[inline(always)]
+    pub fn new(point: [f32; 2]) -> Option<Self> {
+        let [x, y] = point;
+        let x = UnitInterval::new(x);
+        let y = UnitInterval::new(y);
+        if let (Ok(x), Ok(y)) = (x, y) {
+            Some(Self { x, y })
+        } else {
+            None
+        }
+    }
+    #[inline(always)]
     pub(super) fn interpolate(min: Self, max: Self, steps: u32, target: u32) -> Self {
         let delta = target as f32 / (steps - 1) as f32;
         let x = UnitInterval::interpolate(min.x, max.x, delta);
         let y = UnitInterval::interpolate(min.y, max.y, delta);
         Self { x, y }
+    }
+
+    #[must_use]
+    fn transform(&self, [width, height]: [u32; 2]) -> (u32, u32) {
+        let Self { x, y } = self;
+        let x = x.transform(width);
+        let y = y.transform(height);
+        (x, y)
     }
 }
 
@@ -86,5 +110,30 @@ impl UnitQuadrilateral {
                 y: UnitInterval(1.),
             },
         )
+    }
+
+    #[must_use]
+    pub fn transform(&self, size: [u32; 2]) -> QuadrilateralU32 {
+        let Self { lt, lb, rt, rb } = self;
+        let lt = lt.transform(size);
+        let lb = lb.transform(size);
+        let rt = rt.transform(size);
+        let rb = rb.transform(size);
+        QuadrilateralU32 { lt, lb, rt, rb }
+    }
+}
+pub struct QuadrilateralU32 {
+    lt: (u32, u32),
+    lb: (u32, u32),
+    rt: (u32, u32),
+    rb: (u32, u32),
+}
+impl QuadrilateralU32 {
+    pub fn width(&self) -> u32 {
+        self.rt.0.max(self.rb.0) - self.lt.0.min(self.lb.0)
+    }
+
+    pub fn height(&self) -> u32 {
+        self.lb.1.max(self.rb.1) - self.lt.1.min(self.rt.1)
     }
 }
