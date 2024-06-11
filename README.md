@@ -2,7 +2,7 @@
 
 Convert image of graph to data:
 
-![Illustrating image](/Readme_Image.png)
+![Illustrating image](Readme_Image.png)
 
 
 There is an online tool available, powered by egui:
