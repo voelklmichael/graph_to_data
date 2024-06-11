@@ -408,7 +408,7 @@ impl GraphMultiNode {
         self.ys
             .iter()
             .enumerate()
-            .filter(|(_, ys)| ys.verticals.len() > 0)
+            .filter(|(_, ys)| !ys.verticals.is_empty())
             .map(|(x, _)| x)
             .min()
             .unwrap_or(usize::MIN)
@@ -417,7 +417,7 @@ impl GraphMultiNode {
         self.ys
             .iter()
             .enumerate()
-            .filter(|(_, ys)| ys.verticals.len() > 0)
+            .filter(|(_, ys)| !ys.verticals.is_empty())
             .map(|(x, _)| x)
             .max()
             .unwrap_or(usize::MAX)
@@ -509,7 +509,7 @@ impl GraphMultiNode {
                         }
                     }
                     let x = convert(x as u32, x_limits, steps_x, false);
-                    let y = convert(y as u32, y_limits, steps_y, true);
+                    let y = convert(y, y_limits, steps_y, true);
                     Some((x, y))
                 } else {
                     None

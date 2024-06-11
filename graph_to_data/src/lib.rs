@@ -14,6 +14,8 @@ use std::path::Path;
 use itertools::Itertools;
 pub use unit_geometry::{UnitInterval, UnitPoint, UnitQuadrilateral};
 
+pub type ImageRgba = (image::Rgba<u8>, Vec<(f32, f32)>);
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(default)]
 pub struct Settings {
@@ -70,7 +72,7 @@ pub struct LineDetected {
     remaining_vertices: Vec<Vec<step3_group::CombinedVerticals>>,
     graphs: Vec<(image::Rgba<u8>, Vec<step3_group::GraphMultiNode>)>,
     cropped_with_plots: Option<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
-    plots: Vec<(image::Rgba<u8>, Vec<(f32, f32)>)>,
+    plots: Vec<ImageRgba>,
 }
 impl LineDetected {
     pub fn save<P: AsRef<std::path::Path>>(&self, output_folder: P) -> image::ImageResult<()> {
@@ -179,11 +181,13 @@ pub fn line_detection(
             height: cropped.height(),
         });
     }
-    let mut line_detected = LineDetected::default();
-    line_detected.cropped = Some(cropped);
+    let mut line_detected = LineDetected {
+        cropped: Some(cropped),
+        ..Default::default()
+    };
     let cropped = line_detected.cropped.as_ref().unwrap();
     // step 1 - extract colors
-    let colors = step1_color_extraction::extract_colors(&cropped, &settings);
+    let colors = step1_color_extraction::extract_colors(cropped, settings);
     //line_detected.colors = Some(colors);
     //let colors = line_detected.colors.as_ref().unwrap();
     let mut colors_to_use = Vec::new();
@@ -193,7 +197,7 @@ pub fn line_detection(
         const N: u8 = 0;
 
         // step 2 - filter colors
-        let color_filtered = step2_color_filtering::color_filtering(&cropped, &color, &settings);
+        let color_filtered = step2_color_filtering::color_filtering(cropped, &color, settings);
         let counts = (0..color_filtered.width())
             .map(|x| {
                 (0..color_filtered.height())
@@ -233,7 +237,7 @@ pub fn line_detection(
         // step 3 - group into large components and remaining
         let (large_components, mut remaining_verticals) = {
             let (large_components, remaining_verticals) =
-                step3_group::group_large_components_and_remaining(&color_filtered, &settings);
+                step3_group::group_large_components_and_remaining(color_filtered, settings);
 
             let mut grouped_image = imageproc::map::map_colors(color_filtered, |c| {
                 if c == image::Luma([H; 1]) {
@@ -277,8 +281,8 @@ pub fn line_detection(
             let graphs = step4_stitch::stitch(
                 large_components,
                 &mut remaining_verticals,
-                &settings,
-                &color_filtered,
+                settings,
+                color_filtered,
             );
 
             let mut stitched_image = imageproc::map::map_colors(color_filtered, |c| {

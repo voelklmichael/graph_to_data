@@ -19,7 +19,7 @@ impl AxisDimension {
         });
 
         if self.current != self.before {
-            self.before = self.current.clone();
+            self.before.clone_from(&self.current);
             if self.current.trim().is_empty() {
                 self.fraction = None;
                 self.is_parse_error = None;
@@ -46,25 +46,25 @@ impl AxisDimension {
 }
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct AxisPoint {
-    min: AxisDimension,
+    x: AxisDimension,
     y: AxisDimension,
 }
 impl AxisPoint {
     pub fn show(&mut self, label: &str, ui: &mut egui::Ui) {
         ui.label(label);
-        self.min.show(ui);
+        self.x.show(ui);
         self.y.show(ui);
     }
 
     pub fn is_set(&self) -> Option<Axis> {
-        self.min
+        self.x
             .fraction
             .and_then(|min| self.y.fraction.map(|max| Axis { min, max }))
     }
 
     fn new(x: f32, y: f32) -> Self {
         Self {
-            min: AxisDimension::new(x),
+            x: AxisDimension::new(x),
             y: AxisDimension::new(y),
         }
     }
@@ -93,6 +93,7 @@ impl AxisSettings {
         }
     }
 }
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy)]
 pub struct Axis {
     min: f32,
     max: f32,
@@ -102,6 +103,7 @@ impl Axis {
         (self.min, self.max)
     }
 }
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy)]
 pub struct Axes {
     x_axis: Axis,
     y_axis: Axis,

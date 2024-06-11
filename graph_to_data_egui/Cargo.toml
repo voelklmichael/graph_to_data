@@ -20,14 +20,29 @@ serde = { version = "1", features = ["derive"] }
 rfd = "0.14.1"
 image = "0.25.1"
 strum = { version = "0.26", features = ["derive"] }
-arboard = "3.4.0"
+task_simple = "0.3.0"
+wasm-timer = "0.2.5"
 
 graph_to_data = { path = "../graph_to_data" }
 
-
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11.3"
-futures = "0.3.28"
+arboard = "3.4.0"
+
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3.69", features = [
+    "Window",
+    "Navigator",
+    "Clipboard",
+] }
+
+
+[[bin]]
+name = "load_from_bytes"
+path = "src/load_from_bytes.rs"
+
+[[bin]]
+name = "detection"
+path = "src/detection.rs"

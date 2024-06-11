@@ -23,7 +23,7 @@ impl CropDimension {
         });
 
         if self.current != self.before {
-            self.before = self.current.clone();
+            self.before.clone_from(&self.current);
             if self.current.trim().is_empty() {
                 self.fraction = None;
                 self.is_parse_error = None;

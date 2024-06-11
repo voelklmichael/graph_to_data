@@ -14,7 +14,7 @@ pub fn stitch(
         ((settings.step4_component_jump_height_fraction * image.height() as f32) as u32).max(2);
     'outer: loop {
         // combining components
-        while let Some((i, j, d)) = {
+        if let Some((i, j, d)) = {
             components
                 .iter()
                 .enumerate()
@@ -31,8 +31,6 @@ pub fn stitch(
                 let c = components.remove(j);
                 components[i].stitch_together(c);
                 continue 'outer;
-            } else {
-                break;
             }
         }
         // add verticals to components

@@ -1,237 +1,779 @@
-mod image_wrapper;
+use graph_to_data::{UnitInterval, UnitPoint, UnitQuadrilateral};
 
-use graph_to_data::UnitQuadrilateral;
-use strum::VariantArray;
+mod axis_settings;
+mod crop_settings;
+mod file_loading;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
-#[serde(default)]
+use super::ImageBuf;
+use axis_settings::AxisSettings;
+use crop_settings::CropSettings;
 
-pub struct Settings {
-    crop: image_wrapper::CropSettings,
-    //   line_detection: graph_to_data::LineDetectionSettings,
-}
+pub use axis_settings::Axes;
 
-mod file_picker;
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Tab {
-    settings: Settings,
+    file_state: file_loading::FileState,
+    hide_settings: bool,
+    #[serde(skip)]
+    original_image: Option<(crate::tasks::ImageSerde, egui::TextureHandle)>,
+    #[serde(skip)]
+    state: State,
+    #[serde(skip)]
+    detection_task: DetectionTaskWrapper,
 
-    loaded: Option<(String, Option<std::path::PathBuf>)>,
-    #[serde(skip)]
-    deserialized: bool,
-    #[serde(skip)]
-    file_picker: file_picker::FilePicker,
-    #[serde(skip)]
-    selected_step: Step,
-    #[serde(skip)]
-    request_repaint: bool,
-
-    // Step 0
-    #[serde(skip)]
-    step_0_error: Option<String>,
-
-    // Step 1 - crop
-    select_area: Option<SelectedArea>,
-    #[serde(skip)]
-    step_1_input: Option<image_wrapper::ImageWrapper>,
-
-    // Step 2 - select first point
-    select_first_point: Option<image_wrapper::ImagePixel>,
-    #[serde(skip)]
-    step_2_input: Option<Result<image_wrapper::ImageWrapper, String>>,
-
-    // Step 3 - select first point
-    //line_points: Option<Vec<(u32, u32)>>,
-    #[serde(skip)]
-    step_3_input: Option<Vec<(u32, u32)>>,
+    settings: graph_to_data::Settings,
+    settings_as_string: Option<SettingsAsString>,
+    crop_settings: CropSettings,
+    axis_settings: AxisSettings,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy)]
-struct SelectedArea(UnitQuadrilateral);
-
-#[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Default,
-    PartialEq,
-    strum::VariantArray,
-    Clone,
-    Copy,
-    PartialOrd,
-)]
-pub enum Step {
-    #[default]
-    ImageSelection,
-    ImageLoadedAreaSelection,
-    AreaSelectedFirstPointSelection,
-    LineDetection,
+struct DetectionTaskWrapper {
+    task: task_simple::Task<crate::tasks::DetectionTask>,
 }
-impl Step {
-    fn label(&self) -> &str {
-        match self {
-            Step::ImageSelection => "Load image image",
-            Step::ImageLoadedAreaSelection => "Crop image",
-            Step::AreaSelectedFirstPointSelection => "Select first point",
-            Step::LineDetection => "Line detection",
+impl Default for DetectionTaskWrapper {
+    fn default() -> Self {
+        Self {
+            task: task_simple::Task::new("detection"),
         }
     }
 }
 
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+
+struct ParseableTextBox {
+    before: String,
+    current: String,
+    is_parse_error: Option<String>,
+}
+trait Parseable: Sized {
+    fn parse(s: &str) -> Result<Self, String>;
+}
+impl Parseable for u8 {
+    fn parse(s: &str) -> Result<Self, String> {
+        s.parse().map_err(|e| format!("{e:?}"))
+    }
+}
+impl Parseable for f32 {
+    fn parse(s: &str) -> Result<Self, String> {
+        s.parse().map_err(|e| format!("{e:?}"))
+    }
+}
+impl ParseableTextBox {
+    fn show_and_parse<T: Parseable>(
+        &mut self,
+        label: &str,
+        tooltip: &str,
+        value: &mut T,
+        ui: &mut egui::Ui,
+    ) {
+        let tooltip = if let Some(error) = &self.is_parse_error {
+            error
+        } else {
+            tooltip
+        };
+        ui.label(label).on_hover_text(tooltip);
+
+        ui.scope(|ui| {
+            if self.is_parse_error.is_some() {
+                ui.style_mut().visuals.extreme_bg_color = egui::Color32::RED;
+                ui.style_mut().visuals.override_text_color = Some(egui::Color32::WHITE);
+            }
+            ui.text_edit_singleline(&mut self.current)
+                .on_hover_text(tooltip);
+        });
+
+        if self.current != self.before {
+            self.before.clone_from(&self.current);
+            match T::parse(&self.current) {
+                Ok(v) => {
+                    *value = v;
+                    self.is_parse_error = None;
+                }
+                Err(e) => self.is_parse_error = Some(e),
+            }
+        }
+    }
+
+    fn new<T: std::fmt::Display>(default: T) -> Self {
+        let s = default.to_string();
+        Self {
+            before: s.clone(),
+            current: s,
+            is_parse_error: None,
+        }
+    }
+}
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+struct SettingsAsString {
+    step1_width_minimial_fraction: ParseableTextBox,
+    step1_height_maximal_fraction: ParseableTextBox,
+    step1_close_count: ParseableTextBox,
+    step1_step2_color_radius: ParseableTextBox,
+    step3_min_width_fraction: ParseableTextBox,
+    step4_component_jump_height_fraction: ParseableTextBox,
+}
+impl SettingsAsString {
+    fn new(settings: &graph_to_data::Settings) -> Self {
+        Self {
+            step1_width_minimial_fraction: ParseableTextBox::new(
+                settings.step1_width_minimial_fraction,
+            ),
+            step1_height_maximal_fraction: ParseableTextBox::new(
+                settings.step1_height_maximal_fraction,
+            ),
+            step1_step2_color_radius: ParseableTextBox::new(settings.step1_step2_color_radius),
+            step3_min_width_fraction: ParseableTextBox::new(settings.step3_min_width_fraction),
+            step4_component_jump_height_fraction: ParseableTextBox::new(
+                settings.step4_component_jump_height_fraction,
+            ),
+            step1_close_count: ParseableTextBox::new(settings.step1_close_count),
+        }
+    }
+}
 impl Tab {
+    pub(crate) fn file_dropped(
+        &mut self,
+        file: egui::DroppedFile,
+    ) -> Result<(), egui::DroppedFile> {
+        self.file_state.file_dropped(file)
+    }
+
+    pub(crate) fn from_dropped_file(file: egui::DroppedFile) -> Tab {
+        let mut tab = Self::default();
+        tab.file_dropped(file)
+            .expect("There is no file loaded for this default tab, so this never fails");
+        tab
+    }
+
     pub(crate) fn title(&self) -> egui::WidgetText {
-        self.loaded
-            .as_ref()
-            .map(|x| x.0.as_str())
-            .unwrap_or("No file selected")
-            .into()
+        self.file_state.title()
     }
 
     pub(crate) fn show(&mut self, ui: &mut egui::Ui) {
-        // show deserialized data if any
-        {
-            if let Some((_, Some(path))) = &self.loaded {
-                if !self.deserialized {
-                    self.load_from_path(path.to_owned())
+        if self.file_state.progress() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs(1));
+            ui.set_enabled(false);
+        }
+        if let Some(result) = self.detection_task.task.check() {
+            let result = match result {
+                Ok((Some(image), csv)) => {
+                    let image: crate::ImageBuf = image.into();
+                    let size = [image.width() as _, image.height() as _];
+                    let pixels = image.as_flat_samples();
+                    let egui_image =
+                        egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                    let id = format!("ID: {:?}", ui.auto_id_with("Image"));
+                    let image =
+                        ui.ctx()
+                            .load_texture(id, egui_image, egui::TextureOptions::NEAREST);
+                    Ok((Some(image), csv))
                 }
-            }
-            self.deserialized = true;
+                Ok((None, csv)) => Ok((None, csv)),
+                Err(e) => Err(e),
+            };
+            self.state = State::LineDetected(Box::new(result));
         }
 
-        ui.horizontal(|ui| {
-            let mut is_active = true;
-            let mut fallback = Step::default();
+        if let Some(error) = self.file_state.is_error() {
+            ui.heading(
+                egui::RichText::new(error)
+                    .background_color(egui::Color32::RED)
+                    .color(egui::Color32::WHITE),
+            );
+            self.file_state.show_select_image_button(ui);
+        } else if let Some(image) = self.file_state.is_loaded() {
+            if let Some(image) = image {
+                let size = [image.width() as _, image.height() as _];
+                let pixels = image.as_flat_samples();
+                let egui_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                let id = format!("ID: {:?}", ui.auto_id_with("Image"));
+                let texture_id =
+                    ui.ctx()
+                        .load_texture(id, egui_image, egui::TextureOptions::NEAREST);
+                self.original_image = Some((image.into(), texture_id));
+                self.state = State::CropByRectangle(self.crop_settings.convert());
+                ui.ctx().request_repaint();
+            }
+            assert!(self.original_image.is_some());
+            egui::SidePanel::left("settings_panel")
+                .resizable(true)
+                .default_width(200.)
+                .show_inside(ui, |ui| self.show_settings(ui));
+            egui::CentralPanel::default().show_inside(ui, |ui| self.show_state(ui));
+        } else {
+            ui.vertical(|ui| {
+                ui.heading("Select image");
+                self.file_state.show_select_image_button(ui);
+            });
+        }
+    }
 
-            for step in Step::VARIANTS {
-                if !match step {
-                    Step::ImageSelection => true,
-                    Step::ImageLoadedAreaSelection => self.step_1_input.is_some(),
-                    Step::AreaSelectedFirstPointSelection => self.step_2_input.is_some(),
-                    Step::LineDetection => self.step_3_input.is_some(),
-                } {
-                    is_active = false;
-                } else if is_active {
-                    fallback = *step;
-                }
-                if self.selected_step > fallback && !is_active {
-                    self.selected_step = fallback;
-                }
-                ui.scope(|ui| {
-                    ui.set_enabled(is_active);
-                    ui.selectable_value(&mut self.selected_step, *step, step.label());
-                });
+    fn show_settings(&mut self, ui: &mut egui::Ui) {
+        if self.hide_settings {
+            if ui.button(">").on_hover_text("Show settings").clicked() {
+                self.hide_settings = false;
             }
-        });
-        ui.separator();
-        match self.selected_step {
-            Step::ImageSelection => {
-                if let Some(file) = self.file_picker.show_open(ui) {
-                    self.file_loaded(file);
+            // TODO: enlarge this button to take all available space
+        } else {
+            ui.vertical(|ui| {
+                let button = ui.button("< Hide Settings");
+                if button.on_hover_text("Hide settings").clicked() {
+                    self.hide_settings = true;
                 }
-                if let Some(error) = &self.step_0_error {
-                    show_error(ui, error);
-                }
-            }
-            Step::ImageLoadedAreaSelection => {
-                if let Some(Err(msg)) = &self.step_2_input {
-                    show_error(ui, msg)
-                }
-                if let Some(image) = &mut self.step_1_input {
-                    if let Some(selected) = image.select_area(ui) {
-                        let cropped = image.crop(selected, &self.settings.crop);
-                        if cropped.is_ok() {
-                            self.step_completed();
+                self.file_state.show_select_image_button(ui);
+                ui.separator();
+
+                ui.heading("Crop settings");
+
+                egui::Grid::new("crop_settings_grid")
+                    .num_columns(4)
+                    .show(ui, |ui| {
+                        {
+                            ui.label(" ");
+                            ui.label("X");
+                            ui.label("Y");
+                            ui.label("Refine");
+                            ui.end_row();
                         }
-                        self.step_2_input = Some(cropped);
-                        self.select_area = Some(selected);
-                    }
-                }
-            }
-            Step::AreaSelectedFirstPointSelection => {
-                if let Some(Ok(image)) = &mut self.step_2_input {
-                    if let Some(first_point) = image.show_clickable_image(ui) {
-                        let detection =
-                            image.detect_line(first_point, &self.settings.line_detection);
-                        self.step_3_input = Some(detection);
-                        self.select_first_point = Some(first_point);
-                        self.step_completed();
-                    }
-                }
-            }
-            Step::LineDetection => {
-                if let (Some(line), Some(Ok(cropped))) =
-                    (&mut self.step_3_input, &mut self.step_2_input)
-                {
-                    self.file_picker.show_save(ui, || {
-                        Ok(line
-                            .iter()
-                            .map(|(x, y)| format!("{x};{y}"))
-                            .collect::<Vec<_>>()
-                            .join("\n"))
+
+                        self.crop_settings.left_top.show("Left Top", ui);
+                        if ui.button("Refine").clicked() {
+                            self.state = State::RefineCrop(RefineCrop::LeftTop)
+                        }
+                        ui.end_row();
+                        self.crop_settings.left_bottom.show("Left Bottom", ui);
+                        if ui.button("Refine").clicked() {
+                            self.state = State::RefineCrop(RefineCrop::LeftBottom)
+                        }
+                        ui.end_row();
+                        self.crop_settings.right_top.show("Right Top", ui);
+                        if ui.button("Refine").clicked() {
+                            self.state = State::RefineCrop(RefineCrop::RightTop)
+                        }
+                        ui.end_row();
+                        self.crop_settings.right_bottom.show("Right Bottom", ui);
+                        if ui.button("Refine").clicked() {
+                            self.state = State::RefineCrop(RefineCrop::RightBottom)
+                        }
+                        ui.end_row();
                     });
-                    cropped.show_fitted_line(line, ui);
+
+                if ui.button("Crop by rectangle").clicked() {
+                    self.state = State::CropByRectangle(self.crop_settings.convert())
+                }
+                ui.separator();
+
+                ui.heading("Detection settings");
+                {
+                    if self.settings_as_string.is_none() {
+                        self.settings_as_string = Some(SettingsAsString::new(&self.settings));
+                    }
+                    let SettingsAsString {
+                        step1_width_minimial_fraction,
+                        step1_height_maximal_fraction,
+                        step1_close_count,
+                        step1_step2_color_radius,
+                        step3_min_width_fraction,
+                        step4_component_jump_height_fraction,
+                    } = &mut self.settings_as_string.as_mut().unwrap();
+                    egui::Grid::new("detection_settings_grid")
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            {
+                                ui.label("Step 1: ignore gray");
+                                ui.checkbox(&mut self.settings.step1_ignore_gray, "");
+                            }
+                            ui.end_row();
+                            step1_width_minimial_fraction.show_and_parse(
+                                "Step 1: Minimal Width",
+                                "Minimal allowed fraction of image width \
+                            for color detection.\n \
+                            Colors that appear in less columns are \
+                            not considered graphs\
+                            Value between 0.0 and 1.0",
+                                &mut self.settings.step1_width_minimial_fraction,
+                                ui,
+                            );
+                            ui.end_row();
+                            step1_height_maximal_fraction.show_and_parse(
+                                "Step 1: Maximum Height",
+                                "Maximal allowed fraction of image height \
+                            for color detection.\n \
+                            Colors that appear more often in a column \
+                            color are not considered graphs\
+                            Value between 0.0 and 1.0",
+                                &mut self.settings.step1_height_maximal_fraction,
+                                ui,
+                            );
+                            ui.end_row();
+                            step1_close_count.show_and_parse(
+                                "Step 1: Close count",
+                                "This removes points which are not connected to\
+                        larger clusters of the same color.\
+                        This settings controls the distances \
+                        (larger value=>more is removed).\
+                        Value between 0 and 255",
+                                &mut self.settings.step1_close_count,
+                                ui,
+                            );
+                            ui.end_row();
+                            step1_step2_color_radius.show_and_parse(
+                                "Step 2: Color radius",
+                                "Radius in color space of colors\
+                        which are considered equal\
+                        Value between 0 and 255",
+                                &mut self.settings.step1_step2_color_radius,
+                                ui,
+                            );
+                            ui.end_row();
+                            step3_min_width_fraction.show_and_parse(
+                                "Step 3: Minimal width",
+                                "Minimal width of connected pixels \
+                        to be used as a starting line\
+                        Value between 0.0 and 1.0",
+                                &mut self.settings.step3_min_width_fraction,
+                                ui,
+                            );
+                            ui.end_row();
+                            step4_component_jump_height_fraction.show_and_parse(
+                                "Step 4: Jump height",
+                                "Maximal vertical jump hight allowed to join \
+                        connected components.\
+                        Value between 0.0 and 1.0",
+                                &mut self.settings.step4_component_jump_height_fraction,
+                                ui,
+                            );
+                            ui.end_row();
+                            {
+                                ui.label("Override fit color");
+                                let mut override_fit_color =
+                                    self.settings.step6_fit_graph_color.is_some();
+                                ui.horizontal(|ui| {
+                                    ui.checkbox(&mut override_fit_color, "");
+                                    if override_fit_color {
+                                        if self.settings.step6_fit_graph_color.is_none() {
+                                            self.settings.step6_fit_graph_color =
+                                                Some(graph_to_data::GOLD_AS_RGB);
+                                        }
+                                        let color =
+                                            self.settings.step6_fit_graph_color.as_mut().unwrap();
+                                        egui::color_picker::color_edit_button_srgb(ui, color);
+                                    } else {
+                                        self.settings.step6_fit_graph_color = None;
+                                    }
+                                });
+                            }
+                            ui.end_row();
+                        });
+                    if ui.button("Detect").clicked() {
+                        self.state = self.detect()
+                    }
+                }
+
+                ui.heading("Axis settings");
+
+                egui::Grid::new("axis_settings_grid")
+                    .num_columns(3)
+                    .max_col_width(ui.available_width() / 2.)
+                    .show(ui, |ui| {
+                        {
+                            ui.label(" ");
+                            ui.label("Min");
+                            ui.label("Max");
+                            ui.end_row();
+                        }
+
+                        self.axis_settings.x_axis.show("X", ui);
+                        ui.end_row();
+                        self.axis_settings.y_axis.show("Y", ui);
+                        ui.end_row();
+                    });
+
+                ui.separator();
+                let image = egui::Image::from_texture(egui::load::SizedTexture {
+                    id: self.original_image.as_ref().unwrap().1.id(),
+                    size: ui.available_size_before_wrap(),
+                })
+                .sense(egui::Sense::click());
+                egui::Widget::ui(image, ui).on_hover_text("Original image");
+            });
+        }
+    }
+
+    fn show_state(&mut self, ui: &mut egui::Ui) {
+        let work = match &mut self.state {
+            State::NothingLoaded => {
+                ui.heading("No image loaded yet");
+                None
+            }
+            State::CropByRectangle(crop_by_rectangle) => {
+                ui.heading("Crop image: Select rectangle via drag and drop");
+                enum Request {
+                    None,
+                    Refine,
+                    Detect,
+                    CropByRectangle(UnitQuadrilateral),
+                }
+                let mut requested = Request::None;
+                if self.crop_settings.is_set().is_some() {
+                    ui.horizontal(|ui| {
+                        if ui.button("Refine").clicked() {
+                            requested = Request::Refine;
+                        }
+                        if ui.button("Detect").clicked() {
+                            requested = Request::Detect;
+                        }
+                    });
+                }
+                let image = egui::Image::from_texture(egui::load::SizedTexture {
+                    id: self.original_image.as_ref().unwrap().1.id(),
+                    size: ui.available_size_before_wrap(),
+                })
+                .sense(egui::Sense::click_and_drag());
+                let response = egui::Widget::ui(image, ui);
+
+                if response.drag_started() {
+                    crop_by_rectangle.drag_start = response.hover_pos()
+                }
+                if response.drag_stopped() {
+                    if let (Some(start), Some(end)) =
+                        (crop_by_rectangle.drag_start.take(), response.hover_pos())
+                    {
+                        let start = position_converter_relative(start, response.rect);
+                        let end = position_converter_relative(end, response.rect);
+                        if let (Some(start), Some(end)) = (start, end) {
+                            requested = Request::CropByRectangle(UnitQuadrilateral::rectangular(
+                                start, end,
+                            ));
+                        }
+                    }
+                }
+                if let Some(dragging) = response.dragged().then_some(response.hover_pos()).flatten()
+                {
+                    if let Some(start) = crop_by_rectangle.drag_start {
+                        let rect = egui::epaint::Rect::from_two_pos(start, dragging);
+                        ui.painter().with_clip_rect(response.rect).rect_stroke(
+                            rect,
+                            egui::Rounding::ZERO,
+                            egui::Stroke::new(3.0, egui::Color32::GOLD),
+                        );
+                    }
+                }
+                if let Some(previous) = &crop_by_rectangle.previous_rectangle {
+                    let UnitQuadrilateral { lt, lb, rt, rb } = previous;
+                    let lerp = |p: &UnitPoint| response.rect.lerp_inside(egui::vec2(p.x.0, p.y.0));
+                    let lt = lerp(lt);
+                    let lb = lerp(lb);
+                    let rt = lerp(rt);
+                    let rb = lerp(rb);
+                    for points in [[lt, lb], [lb, rb], [rb, rt], [rt, lt]] {
+                        ui.painter()
+                            .with_clip_rect(response.rect)
+                            .line_segment(points, egui::Stroke::new(3.0, egui::Color32::GOLD));
+                    }
+                }
+
+                match requested {
+                    Request::None => None,
+                    Request::Refine => Some(Work::RefineCrop(Default::default())),
+                    Request::Detect => Some(Work::Detect),
+                    Request::CropByRectangle(selected_area) => {
+                        Some(Work::CroppedByRectangle(selected_area))
+                    }
                 }
             }
-        }
+            State::LineDetecting(x) => {
+                ui.label("Computing ...");
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(16));
+                let delta_time = wasm_timer::Instant::now() - *x;
+                let x = delta_time.as_millis() as f32 / 5000.0;
+                egui::Widget::ui(egui::ProgressBar::new(x.fract()), ui);
+                None
+            }
+            State::LineDetected(result) => {
+                let result: &mut Result<_, _> = &mut *result;
+                match result {
+                    Ok((image, csv)) => {
+                        if let Some(image) = image {
+                            ui.horizontal(|ui| {
+                                if ui.button("Save csv to file").clicked() {
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    {
+                                        let dialog =
+                                            rfd::FileDialog::new().set_title("Save csv to");
+                                        let dialog =
+                                            if let Some(file_name) = self.file_state.file_name() {
+                                                dialog.set_file_name(format!("{file_name}.csv"))
+                                            } else {
+                                                dialog
+                                            };
 
-        if std::mem::take(&mut self.request_repaint) {
+                                        if let Some(path) = dialog.save_file() {
+                                            let _ = std::fs::write(path, &*csv);
+                                        }
+                                    }
+                                    #[cfg(target_arch = "wasm32")]
+                                    {
+                                        let task = rfd::AsyncFileDialog::new().save_file();
+                                        let bytes = csv.as_bytes().to_owned();
+                                        execute(async move {
+                                            let file = task.await;
+                                            if let Some(file) = file {
+                                                _ = file.write(&bytes).await;
+                                            }
+                                        });
+                                    }
+                                }
+                                if ui.button("Copy csv to clipboard").clicked() {
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    {
+                                        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                                            let _ = clipboard.set_text(&*csv);
+                                        }
+                                    }
+
+                                    #[cfg(target_arch = "wasm32")]
+                                    {
+                                        if let Some(clipboard) = {
+                                            web_sys::window()
+                                                .map(|x| x.navigator())
+                                                .and_then(|x| x.clipboard())
+                                        } {
+                                            let _ = clipboard.write_text(&*csv);
+                                        }
+                                    }
+                                }
+                            });
+                            let image = egui::Image::from_texture(egui::load::SizedTexture {
+                                id: image.id(),
+                                size: ui.available_size_before_wrap(),
+                            })
+                            .sense(egui::Sense::click());
+                            egui::Widget::ui(image, ui)
+                                .on_hover_text("Cropped image with detected lines");
+                        } else {
+                            ui.label("Failed to fit curves");
+                        }
+                    }
+                    Err(error) => {
+                        ui.heading(
+                            egui::RichText::new(error.clone())
+                                .background_color(egui::Color32::RED)
+                                .color(egui::Color32::WHITE),
+                        );
+                    }
+                }
+                None
+            }
+            State::RefineCrop(refine) => {
+                ui.horizontal(|ui| {
+                    ui.heading("Click to refine crop point: ");
+                    ui.heading(refine.label())
+                });
+                if let Some((id, point)) = {
+                    self.original_image
+                        .as_ref()
+                        .map(|x| x.1.id())
+                        .and_then(|id| {
+                            let point = match refine {
+                                RefineCrop::LeftTop => self.crop_settings.left_top.is_set(),
+                                RefineCrop::LeftBottom => self.crop_settings.left_bottom.is_set(),
+                                RefineCrop::RightTop => self.crop_settings.right_top.is_set(),
+                                RefineCrop::RightBottom => self.crop_settings.right_bottom.is_set(),
+                            };
+                            point.map(|p| (id, p))
+                        })
+                } {
+                    let mut new_position = None;
+                    {
+                        let x = point.x.0;
+                        let y = point.y.0;
+                        const OFFSET: f32 = 0.05;
+                        fn reduce(x: f32) -> f32 {
+                            let x = x - OFFSET;
+                            if x > 0. {
+                                x
+                            } else {
+                                0.
+                            }
+                        }
+                        fn increase(x: f32) -> f32 {
+                            let x = x + OFFSET;
+                            if x < 1. {
+                                x
+                            } else {
+                                1.
+                            }
+                        }
+                        let x_min = reduce(x);
+                        let x_max = increase(x);
+                        let y_min = reduce(y);
+                        let y_max = increase(y);
+                        let rect_around_point = egui::Rect::from_min_max(
+                            egui::pos2(x_min, y_min),
+                            egui::pos2(x_max, y_max),
+                        );
+                        ui.group(|ui| {
+                            let response = ui.allocate_response(
+                                ui.available_size_before_wrap(),
+                                egui::Sense::click(),
+                            );
+                            ui.painter().image(
+                                id,
+                                response.interact_rect,
+                                rect_around_point,
+                                egui::Color32::WHITE,
+                            );
+                            let response = response.on_hover_cursor(egui::CursorIcon::Crosshair);
+                            if let Some(pos) = response.interact_pointer_pos() {
+                                if response.clicked() && response.interact_rect.contains(pos) {
+                                    let transformer = egui::emath::RectTransform::from_to(
+                                        response.rect,
+                                        rect_around_point,
+                                    );
+                                    new_position = Some(transformer.transform_pos(pos));
+                                }
+                            }
+                        });
+                    }
+                    if let Some(new_position) = new_position {
+                        if let Some(point) = UnitPoint::new([new_position.x, new_position.y]) {
+                            self.crop_settings.set_point(refine, point);
+                            Some(refine.next_work())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    self.state = State::NothingLoaded;
+                    None
+                }
+            }
+        };
+        if let Some(work) = work {
             ui.ctx().request_repaint();
-        }
-    }
-
-    fn file_loaded(&mut self, file: file_picker::FileLoaded) {
-        let file_picker::FileLoaded {
-            file_name,
-            bytes,
-            path,
-        } = file;
-        self.loaded = Some((file_name, path));
-
-        let image_result = image::io::Reader::new(std::io::Cursor::new(bytes))
-            .with_guessed_format()
-            .map_err(|e| format!("{e:?}"))
-            .and_then(|x| x.decode().map_err(|e| format!("{e:?}")))
-            .map(|x| image_wrapper::ImageWrapper::new(x.to_rgba8()));
-        match image_result {
-            Ok(image) => {
-                self.step_0_error = None;
-                self.step_1_input = Some(image);
-                self.step_completed();
-            }
-            Err(error) => {
-                self.step_0_error = Some(error);
-                self.step_1_input = None;
+            self.state = match work {
+                Work::CroppedByRectangle(area) => {
+                    self.crop_settings.set(area);
+                    State::RefineCrop(RefineCrop::LeftTop)
+                }
+                Work::CropByRectangle => State::CropByRectangle(self.crop_settings.convert()),
+                Work::RefineCrop(refine) => State::RefineCrop(refine),
+                Work::Detect => self.detect(),
             }
         }
     }
 
-    fn step_completed(&mut self) {
-        if let Some(step) = Step::VARIANTS
-            .iter()
-            .find(|step: &&Step| step > &&self.selected_step)
-        {
-            self.selected_step = *step;
-        }
-        self.request_repaint = true;
-        for step in Step::VARIANTS
-            .iter()
-            .filter(|step: &&Step| step > &&self.selected_step)
-        {
-            match step {
-                Step::ImageSelection => {}
-                Step::ImageLoadedAreaSelection => self.step_1_input = None,
-                Step::AreaSelectedFirstPointSelection => self.step_2_input = None,
-                Step::LineDetection => self.step_3_input = None,
+    #[must_use]
+    fn detect(&mut self) -> State {
+        if let Some(crop_area) = self.crop_settings.is_set() {
+            if let Some(axes) = self.axis_settings.is_set() {
+                let image = self.original_image.as_ref().unwrap().0.clone();
+                let settings = self.settings.clone();
+
+                let input = crate::tasks::DetectionTaskInput {
+                    image,
+                    settings,
+                    crop_area,
+                    axes,
+                };
+                self.detection_task.task.enqueue(input);
+
+                State::LineDetecting(wasm_timer::Instant::now())
+            } else {
+                State::LineDetected(Box::new(Err("Axes not set".into())))
             }
+        } else {
+            State::CropByRectangle(self.crop_settings.convert())
         }
     }
 }
+enum Work {
+    CroppedByRectangle(UnitQuadrilateral),
+    CropByRectangle,
+    RefineCrop(RefineCrop),
+    Detect,
+}
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CropByRectangle {
+    previous_rectangle: Option<UnitQuadrilateral>,
+    drag_start: Option<egui::Pos2>,
+}
+impl CropByRectangle {
+    fn with_previous(area: UnitQuadrilateral) -> Self {
+        Self {
+            previous_rectangle: Some(area),
+            drag_start: None,
+        }
+    }
 
-fn show_error(ui: &mut egui::Ui, error: &String) {
-    ui.heading(
-        egui::RichText::new(error.to_string())
-            .background_color(egui::Color32::RED)
-            .color(egui::Color32::WHITE),
-    );
+    fn new() -> Self {
+        Self {
+            previous_rectangle: None,
+            drag_start: None,
+        }
+    }
+}
+#[derive(Default)]
+enum State {
+    #[default]
+    NothingLoaded,
+    CropByRectangle(CropByRectangle),
+    LineDetecting(wasm_timer::Instant),
+    LineDetected(Box<DetectResult>),
+    RefineCrop(RefineCrop),
+}
+type DetectResult = Result<(Option<egui::TextureHandle>, String), String>;
+#[derive(Default)]
+enum RefineCrop {
+    #[default]
+    LeftTop,
+    LeftBottom,
+    RightTop,
+    RightBottom,
+}
+impl RefineCrop {
+    fn next_work(&self) -> Work {
+        use RefineCrop::*;
+        match self {
+            LeftTop => Work::RefineCrop(LeftBottom),
+            LeftBottom => Work::RefineCrop(RightTop),
+            RightTop => Work::RefineCrop(RightBottom),
+            RightBottom => Work::CropByRectangle,
+        }
+    }
+
+    fn label(&self) -> &str {
+        match self {
+            RefineCrop::LeftTop => "Left Top",
+            RefineCrop::LeftBottom => "Left Bottom",
+            RefineCrop::RightTop => "Right Top",
+            RefineCrop::RightBottom => "Right Bottom",
+        }
+    }
+}
+#[must_use]
+fn position_converter_relative(pos: egui::Pos2, rect: egui::Rect) -> Option<UnitPoint> {
+    let diff = pos - rect.min;
+    let relative_pos = diff / rect.size();
+    let x = UnitInterval::new(relative_pos.x);
+    let y = UnitInterval::new(relative_pos.y);
+    if let (Ok(x), Ok(y)) = (x, y) {
+        Some(UnitPoint { x, y })
+    } else {
+        None
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn execute<F: std::future::Future<Output = ()> + 'static>(f: F) {
+    wasm_bindgen_futures::spawn_local(f);
 }
