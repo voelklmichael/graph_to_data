@@ -7,13 +7,13 @@
 
 <head>
     <!-- change this to your project name -->
-    <title>eframe template</title>
+    <title>Graph2Data</title>
 
     <!-- config for our rust wasm binary. go to https://trunkrs.dev/assets/#rust for more customization -->
     
 <script type="module">
-import init, * as bindings from '/graph_to_data_egui-3a897ed81c2e299d.js';
-const wasm = await init('/graph_to_data_egui-3a897ed81c2e299d_bg.wasm');
+import init, * as bindings from '/graph_to_data_egui-289fafff00961caa.js';
+const wasm = await init('/graph_to_data_egui-289fafff00961caa_bg.wasm');
 
 
 window.wasmBindings = bindings;
@@ -129,8 +129,8 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
         }
     </style>
 
-<link rel="modulepreload" href="/graph_to_data_egui-3a897ed81c2e299d.js" crossorigin=anonymous integrity="sha384-lZkVJvAbdRju0iy7/S9mo0HKQJTcAiaR45Eqn+qLfgZGWEmzyhTJoEv8BkIYfJfy">
-<link rel="preload" href="/graph_to_data_egui-3a897ed81c2e299d_bg.wasm" crossorigin=anonymous integrity="sha384-IK5hVzzEckEUGMKiE/mqvnW8SMcFZhjj3MaswTXfxxFTVCrJhqVcg2MAsrfVWNB8" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="/graph_to_data_egui-289fafff00961caa.js" crossorigin=anonymous integrity="sha384-Pp3hdaNboymHbCC5E/GC14gPdV5V5YZRx7/vb6UFwS45lr9CNMljuQFRbjqDHwo1">
+<link rel="preload" href="/graph_to_data_egui-289fafff00961caa_bg.wasm" crossorigin=anonymous integrity="sha384-d/oW7s2+XsXY2emCS/P4Ul938V0me9OA5qytLrgHKcq2Ll1CPVbuSzRgUITjcHPw" as="fetch" type="application/wasm"></head>
 
 <body>
     <!-- The WASM code will resize the canvas dynamically -->

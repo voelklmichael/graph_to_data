@@ -1,9 +1,9 @@
-var cacheName = 'egui-template-pwa';
+var cacheName = 'graph-to-data-pwa';
 var filesToCache = [
   './',
   './index.html',
-  './eframe_template.js',
-  './eframe_template_bg.wasm',
+  './graph_to_data.js',
+  './graph_to_data_bg.wasm',
 ];
 
 /* Start the service worker and cache all of the app's content */
