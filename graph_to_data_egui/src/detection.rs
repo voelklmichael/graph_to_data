@@ -1,7 +1,10 @@
 fn main() {
     #[cfg(target_arch = "wasm32")]
     {
-        use task_simple::gloo_worker::Registrable;
-        task_simple::WebWorker::<graph_to_data_egui::tasks::DetectionTask>::registrar().register();
+        use graph_to_data_egui_lib::task_simple::gloo_worker::Registrable;
+        graph_to_data_egui_lib::task_simple::WebWorker::<
+            graph_to_data_egui_lib::tasks::DetectionTask,
+        >::registrar()
+        .register();
     }
 }

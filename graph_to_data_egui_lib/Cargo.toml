@@ -1,5 +1,5 @@
 [package]
-name = "graph_to_data_egui"
+name = "graph_to_data_egui_lib"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,22 +14,25 @@ eframe = { version = "0.27.2", default-features = false, features = [
     "glow",
     "persistence",
 ] }
+egui_dock = { version = "0.12.0", features = ["serde"] }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+rfd = "0.14.1"
+image = "0.25.1"
+strum = { version = "0.26", features = ["derive"] }
+task_simple = "0.3.0"
+wasm-timer = "0.2.5"
 
-graph_to_data_egui_lib = { path = "../graph_to_data_egui_lib" }
+graph_to_data = { path = "../graph_to_data" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-env_logger = "0.11.3"
+arboard = "3.4.0"
 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
-
-
-
-[[bin]]
-name = "load_from_bytes"
-path = "src/load_from_bytes.rs"
-
-[[bin]]
-name = "detection"
-path = "src/detection.rs"
+web-sys = { version = "0.3.69", features = [
+    "Window",
+    "Navigator",
+    "Clipboard",
+] }

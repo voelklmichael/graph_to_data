@@ -14,13 +14,13 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Graph2Data",
         native_options,
-        Box::new(|cc| Box::new(graph_to_data_egui::Graph2DataEguiApp::new(cc))),
+        Box::new(|cc| Box::new(graph_to_data_egui_lib::Graph2DataEguiApp::new(cc))),
     )
 }
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+    eframe::WebLogger::init(graph_to_data_egui_lib::log::LevelFilter::Debug).ok();
 
     let web_options = eframe::WebOptions::default();
 
@@ -29,7 +29,7 @@ fn main() {
             .start(
                 "the_canvas_id", // hardcode it
                 web_options,
-                Box::new(|cc| Box::new(graph_to_data_egui::Graph2DataEguiApp::new(cc))),
+                Box::new(|cc| Box::new(graph_to_data_egui_lib::Graph2DataEguiApp::new(cc))),
             )
             .await
             .expect("failed to start eframe");
