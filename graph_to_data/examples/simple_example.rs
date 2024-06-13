@@ -1,5 +1,5 @@
 fn main() {
-    let image_bytes = include_bytes!("..../Readme_Image_Graph.png");
+    let image_bytes = include_bytes!("../../Readme_Image_Graph.png");
     let image = image::io::Reader::new(std::io::Cursor::new(image_bytes))
         .with_guessed_format()
         .unwrap()
