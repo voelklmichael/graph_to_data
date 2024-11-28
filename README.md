@@ -9,4 +9,4 @@ This demo runs also on the desktop, Android to come next!
 
 How to use it:
 
-https://github.com/voelklmichael/graph_to_data/blob/main/use_case.mp4
+![](https://github.com/voelklmichael/graph_to_data/blob/main/use_case.mov)
