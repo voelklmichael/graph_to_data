@@ -8,5 +8,4 @@ There is an online tool available, powered by egui:
 This demo runs also on the desktop, Android to come next!
 
 How to use it:
-
-![](https://github.com/voelklmichael/graph_to_data/blob/main/use_case.mov)
+![Illustrating image](https://github.com/voelklmichael/graph_to_data/blob/main/use_case.gif)
